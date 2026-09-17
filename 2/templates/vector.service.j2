@@ -1,0 +1,19 @@
+[Unit]
+Description=Vector
+Documentation=https://vector.dev
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+User=vector
+Group=vector
+ExecStartPre=/usr/local/bin/vector validate {{ vector_path }}/config/vector.yaml
+ExecStart=/usr/local/bin/vector --config {{ vector_path }}/config/vector.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StartLimitInterval=10
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
