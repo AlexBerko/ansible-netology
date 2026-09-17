@@ -1,0 +1,17 @@
+---
+clickhouse:
+  hosts:
+    clickhouse-01:
+      ansible_host: <IP 1>
+
+
+vector:
+  hosts:
+    vector-01:
+      ansible_host: <IP 2>
+
+
+lighthouse:
+  hosts:
+    lighthouse-01:
+      ansible_host: <IP 3>

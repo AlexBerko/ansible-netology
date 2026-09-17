@@ -1,0 +1,143 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse
+  handlers:
+    - name: Start clickhouse service
+      become: true
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+  tasks:
+    - block:
+        - name: Get clickhouse distrib
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
+            dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+          with_items: "{{ clickhouse_packages }}"
+      rescue:
+        - name: Get clickhouse distrib
+          ansible.builtin.get_url:
+            url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+            dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+    - name: Install clickhouse packages
+      become: true
+      ansible.builtin.yum:
+        name:
+          - clickhouse-common-static-{{ clickhouse_version }}.rpm
+          - clickhouse-client-{{ clickhouse_version }}.rpm
+          - clickhouse-server-{{ clickhouse_version }}.rpm
+        disable_gpg_check: true
+      notify: Start clickhouse service
+    - name: Flush handlers
+      meta: flush_handlers
+    - name: Create database
+      ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
+      register: create_db
+      failed_when: create_db.rc != 0 and create_db.rc !=82
+      changed_when: create_db.rc == 0
+
+
+- name: Install Vector
+  hosts: vector
+  handlers:
+    - name: Vector | Start Vector
+      become: true
+      ansible.builtin.systemd:
+        name: vector
+        state: started
+        enabled: true
+
+    - name: Vector | Restart Vector
+      become: true
+      ansible.builtin.systemd:
+        name: vector
+        state: restarted
+        enabled: true
+
+  tasks:
+    - name: Vector | Get Vector distrib
+      ansible.builtin.get_url:
+        url: "https://github.com/vectordotdev/vector/releases/download/v{{ vector_version }}/vector-{{ vector_version }}-1.x86_64.rpm"
+        dest: "{{ ansible_facts['env']['HOME'] }}/vector-{{ vector_version }}.rpm"
+
+
+    - name: Vector | Install Vector package
+      become: true
+      ansible.builtin.dnf:
+        name: "{{ ansible_facts['env']['HOME'] }}/vector-{{ vector_version }}.rpm"
+        disable_gpg_check: true
+      notify: Vector | Start Vector
+
+
+    - name: Vector | Deploy Vector configuration
+      become: true
+      ansible.builtin.template:
+        src: vector.yaml.j2
+        dest: "/etc/vector/vector.yaml"
+        owner: vector
+        group: vector
+        mode: '0644'
+      notify: Vector | Restart Vector
+
+
+- name: Install LightHouse
+  hosts: lighthouse
+  become: true
+  tasks:
+    - name: LightHouse | Install git
+      ansible.builtin.dnf:
+        name: git
+        state: present
+
+    - name: LightHouse | Pull LightHouse repo
+      ansible.builtin.git:
+        repo: 'https://github.com/VKCOM/lighthouse.git'
+        dest: "{{ lighthouse_dir }}"
+
+    - name: Ensure SELinux tools are present
+      ansible.builtin.dnf:
+        name: policycoreutils-python-utils
+        state: present
+
+    - name: Set SELinux label for Lighthouse web root
+      community.general.sefcontext:
+        target: '{{ lighthouse_dir }}(/.*)?'
+        setype: httpd_sys_content_t
+        state: present
+
+    - name: Apply SELinux label to existing files
+      ansible.builtin.command: restorecon -Rv {{ lighthouse_dir }}
+
+
+- name: Install Nginx
+  hosts: lighthouse
+  become: true
+  handlers:
+    - name: Nginx | Start and enable Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Nginx | Restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
+  tasks:
+    - name: Nginx | Install Nginx package
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+      notify: Nginx | Start and enable Nginx
+
+
+    - name: Nginx | Deploy Nginx config
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: "/etc/nginx/conf.d/lighthouse.conf"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Nginx | Restart Nginx
