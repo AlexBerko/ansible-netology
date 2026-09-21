@@ -1,0 +1,24 @@
+---
+- name: Vector | Get Vector distrib
+  ansible.builtin.get_url:
+    url: "https://github.com/vectordotdev/vector/releases/download/v{{ vector_version }}/vector-{{ vector_version }}-1.x86_64.rpm"
+    dest: "{{ ansible_facts['env']['HOME'] }}/vector-{{ vector_version }}.rpm"
+
+
+- name: Vector | Install Vector package
+  become: true
+  ansible.builtin.dnf:
+    name: "{{ ansible_facts['env']['HOME'] }}/vector-{{ vector_version }}.rpm"
+    disable_gpg_check: true
+  notify: Vector | Start Vector
+
+
+- name: Vector | Deploy Vector configuration
+  become: true
+  ansible.builtin.template:
+    src: vector.yaml.j2
+    dest: "/etc/vector/vector.yaml"
+    owner: vector
+    group: vector
+    mode: '0644'
+  notify: Vector | Restart Vector

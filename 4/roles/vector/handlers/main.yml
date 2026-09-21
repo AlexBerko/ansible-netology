@@ -1,0 +1,14 @@
+---
+- name: Vector | Start Vector
+  become: true
+  ansible.builtin.systemd:
+    name: vector
+    state: started
+    enabled: true
+
+- name: Vector | Restart Vector
+  become: true
+  ansible.builtin.systemd:
+    name: vector
+    state: restarted
+    enabled: true
